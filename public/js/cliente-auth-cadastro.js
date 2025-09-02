@@ -1,123 +1,80 @@
 import { auth, db } from './firebase.js';
-import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
-// --- ELEMENTOS DO FORMULÁRIO ---
-const registerForm = document.getElementById('register-form');
-const cepInput = registerForm.cep;
-const streetInput = registerForm.street;
-const neighborhoodInput = registerForm.neighborhood;
-const cityInput = registerForm.city;
-const stateInput = registerForm.state;
-const numberInput = registerForm.number;
-const phoneInput = registerForm.phone;
+// --- ELEMENTOS DO DOM ---
+const loginClienteForm = document.getElementById('login-cliente-form');
+const adminLinkContainer = document.getElementById('admin-link-container');
+const userNav = document.getElementById('user-navigation');
 
-// --- FUNÇÕES ---
-
-/**
- * Procura um endereço através da API ViaCEP e preenche os campos do formulário.
- * @param {string} cep - O CEP a ser procurado.
- */
-const fetchAddress = async (cep) => {
-    // Limpa os campos e mostra um feedback de carregamento
-    streetInput.value = 'A procurar...';
-    neighborhoodInput.value = 'A procurar...';
-    cityInput.value = 'A procurar...';
-    stateInput.value = 'A procurar...';
-
-    try {
-        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-        if (!response.ok) throw new Error('Não foi possível procurar o CEP.');
+// --- LÓGICA DO FORMULÁRIO DE LOGIN DO CLIENTE ---
+if (loginClienteForm) {
+    loginClienteForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = loginClienteForm.email.value.trim();
+        const password = loginClienteForm.password.value.trim();
         
-        const data = await response.json();
-        if (data.erro) {
-            throw new Error('CEP não encontrado.');
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+            const params = new URLSearchParams(window.location.search);
+            const redirectUrl = params.get('redirect');
+            window.location.href = redirectUrl || 'index.html';
+
+        } catch (err) {
+            console.error("Erro ao entrar:", err);
+            alert('Erro ao entrar: Verifique o seu e-mail e senha.');
+        }
+    });
+}
+
+// --- FUNÇÃO CORRIGIDA PARA ATUALIZAR A NAVEGAÇÃO (CABEÇALHO) ---
+// Esta função agora é 'async' e usa 'await' para garantir que a verificação de admin termine antes de continuar.
+async function updateUserNav(user) {
+    // Limpa o conteúdo atual para evitar duplicados
+    if (adminLinkContainer) adminLinkContainer.innerHTML = '';
+    if (userNav) userNav.innerHTML = '';
+
+    if (user) {
+        // 1. O usuário está logado. Tenta verificar se é admin.
+        try {
+            const roleRef = doc(db, 'roles', user.uid);
+            const snap = await getDoc(roleRef); // USA 'AWAIT' PARA ESPERAR A RESPOSTA
+            if (snap.exists() && snap.data().admin) {
+                if (adminLinkContainer) {
+                    adminLinkContainer.innerHTML = `<a href="admin.html" class="cart-link admin-link">Painel Admin</a>`;
+                }
+            }
+        } catch (error) {
+            console.error("Erro ao verificar a função de admin:", error);
         }
 
-        // Preenche os campos com os dados da API
-        streetInput.value = data.logradouro;
-        neighborhoodInput.value = data.bairro;
-        cityInput.value = data.localidade;
-        stateInput.value = data.uf;
-
-        // Move o foco para o campo de número para o utilizador preencher
-        numberInput.focus();
-
-    } catch (error) {
-        alert(error.message);
-        // Limpa os campos em caso de erro
-        streetInput.value = '';
-        neighborhoodInput.value = '';
-        cityInput.value = '';
-        stateInput.value = '';
+        // 2. Monta a navegação de usuário logado ("Minha Conta", "Sair")
+        if (userNav) {
+            userNav.innerHTML = `
+                <a href="minha-conta.html" class="cart-link">Minha Conta</a>
+                <button id="logout-cliente" class="logout-btn">Sair</button>
+            `;
+            // Adiciona o evento de clique ao botão de logout
+            const logoutButton = document.getElementById('logout-cliente');
+            if (logoutButton) {
+                logoutButton.addEventListener('click', () => {
+                    signOut(auth).catch(err => console.error("Erro ao sair:", err));
+                });
+            }
+        }
+    } else {
+        // 3. O usuário NÃO está logado. Mostra os links "Entrar" e "Registar".
+        if (userNav) {
+            userNav.innerHTML = `
+                <a href="login-cliente.html" class="cart-link">Entrar</a>
+                <a href="cadastro.html" class="cart-link">Registar</a>
+            `;
+        }
     }
-};
-
-/**
- * Aplica uma máscara de telefone (ex: (XX) XXXXX-XXXX) a um campo de input.
- */
-const maskPhone = (event) => {
-    let input = event.target;
-    input.value = phoneMask(input.value);
 }
 
-const phoneMask = (value) => {
-    if (!value) return ""
-    value = value.replace(/\D/g,'')
-    value = value.replace(/(\d{2})(\d)/,"($1) $2")
-    value = value.replace(/(\d)(\d{4})$/,"$1-$2")
-    return value
-}
-
-// --- EVENT LISTENERS ---
-
-cepInput.addEventListener('blur', () => {
-    const cep = cepInput.value.replace(/\D/g, ''); // Remove caracteres não numéricos
-    if (cep.length === 8) {
-        fetchAddress(cep);
-    }
-});
-
-// Adiciona o evento de máscara ao campo de telefone
-phoneInput.addEventListener('keyup', maskPhone);
-
-registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(registerForm).entries());
-
-    if (data.password !== data.confirmPassword) {
-        alert('As senhas não coincidem. Por favor, tente novamente.');
-        return;
-    }
-
-    // A validação de minlength e pattern já é feita pelo HTML5,
-    // mas mantemos a verificação de senha aqui.
-
-    try {
-        const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-        const user = userCredential.user;
-
-        await setDoc(doc(db, "users", user.uid), {
-            name: data.name,
-            email: data.email,
-            phone: data.phone,
-            address: {
-                cep: data.cep,
-                street: data.street,
-                number: data.number,
-                complement: data.complement || '',
-                neighborhood: data.neighborhood,
-                city: data.city,
-                state: data.state
-            },
-            createdAt: new Date()
-        });
-
-        alert('Conta criada com sucesso!');
-        window.location.href = 'index.html';
-
-    } catch (err) {
-        console.error("Erro ao registar:", err);
-        alert('Erro ao registar: ' + err.message);
-    }
+// --- OBSERVADOR DE AUTENTICAÇÃO ---
+// Este código ouve qualquer mudança no estado de login (entrar, sair) e chama a função para atualizar o cabeçalho.
+onAuthStateChanged(auth, (user) => {
+    updateUserNav(user);
 });

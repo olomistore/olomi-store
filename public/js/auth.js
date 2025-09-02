@@ -21,11 +21,11 @@ if (loginForm) {
                 window.location.href = 'admin.html';
             } else {
                 await signOut(auth);
-                alert('Acesso negado. Esta área é apenas para administradores.');
+                showNotification('Acesso negado. Apenas para administradores.', 'error');
             }
         } catch (err) {
             console.error("Erro ao entrar:", err);
-            alert('Erro ao entrar: Verifique o seu e-mail e senha.');
+            showNotification('Erro ao entrar: Verifique o seu e-mail e senha.', 'error');
         }
     });
 }
@@ -52,7 +52,7 @@ export async function requireAdmin() {
     });
 }
 
-// --- LÓGICA DE LOGOUT ---
+// --- LÓGICA DE LOGOUT (USADA NO PAINEL ADMIN) ---
 const logoutButton = document.getElementById('logout');
 if (logoutButton) {
     logoutButton.addEventListener('click', () => {
@@ -80,57 +80,3 @@ if (resetPasswordLink) {
         }
     });
 }
-
-
-// ==================================================================
-// ✅ CÓDIGO CORRIGIDO ABAIXO
-// ==================================================================
-
-// --- LÓGICA PARA ATUALIZAR A NAVEGAÇÃO DO UTILIZADOR (CABEÇALHO) ---
-async function updateUserNav(user) {
-    const adminLinkContainer = document.getElementById('admin-link-container');
-    const userNav = document.getElementById('user-navigation');
-
-    // Limpa a navegação para evitar duplicados
-    if (adminLinkContainer) adminLinkContainer.innerHTML = '';
-    if (userNav) userNav.innerHTML = '';
-
-    if (user) {
-        // Se o utilizador estiver autenticado
-        // 1. Verifica se é administrador (e AGUARDA a resposta)
-        const roleRef = doc(db, 'roles', user.uid);
-        const snap = await getDoc(roleRef); // Usa await para esperar a resposta
-        if (snap.exists() && snap.data().admin) {
-            if (adminLinkContainer) {
-                adminLinkContainer.innerHTML = `<a href="admin.html" class="cart-link admin-link">Painel Admin</a>`;
-            }
-        }
-
-        // 2. Mostra a navegação do cliente ("Minha Conta", "Sair")
-        if (userNav) {
-            userNav.innerHTML = `
-                <a href="minha-conta.html" class="cart-link">Minha Conta</a>
-                <button id="logout-cliente-auth" class="logout-btn">Sair</button>
-            `;
-            const logoutButton = document.getElementById('logout-cliente-auth');
-            if (logoutButton) {
-                logoutButton.addEventListener('click', () => {
-                    signOut(auth);
-                });
-            }
-        }
-    } else {
-        // Se o utilizador não estiver autenticado
-        if (userNav) {
-            userNav.innerHTML = `
-                <a href="login-cliente.html" class="cart-link">Entrar</a>
-                <a href="cadastro.html" class="cart-link">Registar</a>
-            `;
-        }
-    }
-}
-
-// Configura o "ouvinte" de autenticação que atualiza o cabeçalho sempre que o estado de login muda
-onAuthStateChanged(auth, (user) => {
-    updateUserNav(user);
-});

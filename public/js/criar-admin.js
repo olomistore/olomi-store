@@ -31,10 +31,7 @@ if (form) {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            // ==================================================================
-            // ✅ CÓDIGO CORRIGIDO ABAIXO
-            // ==================================================================
-            // Salva um documento de usuário com a estrutura completa para consistência
+            // Salva um documento na coleção 'users' com a estrutura completa para consistência
             await setDoc(doc(db, 'users', user.uid), {
                 name: name,
                 email: email,
@@ -51,7 +48,7 @@ if (form) {
                 createdAt: serverTimestamp()
             });
 
-            // Adiciona a "role" de admin em uma coleção separada
+            // Adiciona a "role" de admin numa coleção separada e crítica
             await setDoc(doc(db, 'roles', user.uid), {
                 admin: true
             });
