@@ -21,5 +21,5 @@ const app = initializeApp(firebaseConfig);
 
 // Exporta os serviços do Firebase que serão utilizados noutras partes do site
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = getFirestore(app, 'olomi');
 export const storage = getStorage(app);
