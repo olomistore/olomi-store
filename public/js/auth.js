@@ -1,85 +1,136 @@
 import { auth, db } from './firebase.js';
-import { 
-    signInWithEmailAndPassword, 
-    onAuthStateChanged, 
-    signOut,
-    sendPasswordResetEmail // Módulo importado para redefinição de senha
-} from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+import { showNotification } from './utils.js';
 
-/**
- * Protege uma página, exigindo que o utilizador seja um administrador.
- * Redireciona caso não esteja autenticado ou não seja administrador.
- */
-export async function requireAdmin() {
-    return new Promise((resolve) => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            unsubscribe(); // Executa a verificação apenas uma vez para evitar memory leaks
-            if (!user) {
-                // Se não houver utilizador, redireciona para o login
-                window.location.href = 'login.html';
-                return;
-            }
-            
-            // Se houver utilizador, verifica se ele tem a permissão de admin
-            const roleRef = doc(db, 'roles', user.uid);
-            const snap = await getDoc(roleRef);
-            
-            if (!snap.exists() || !snap.data().admin) {
-                // Se não for admin, exibe um alerta e redireciona para a loja
-                alert('Você não tem acesso de administrador.');
-                window.location.href = 'index.html';
-                return;
-            }
-            
-            // Se for admin, a promessa é resolvida e a página pode continuar a carregar
-            resolve(user);
-        });
-    });
-}
-
-// Lógica da página de login do administrador
-const form = document.getElementById('login-form');
-if (form) {
-    form.addEventListener('submit', async (e) => {
+// --- LÓGICA DE LOGIN PARA O PAINEL DE ADMIN ---
+const loginForm = document.getElementById('login-form');
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const email = form.email.value.trim();
-        const password = form.password.value.trim();
+        const email = loginForm.email.value.trim();
+        const password = loginForm.password.value.trim();
         try {
-            await signInWithEmailAndPassword(auth, email, password);
-            window.location.href = 'admin.html';
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+            
+            const roleRef = doc(db, 'roles', user.uid);
+            const docSnap = await getDoc(roleRef);
+
+            if (docSnap.exists() && docSnap.data().admin) {
+                window.location.href = 'admin.html';
+            } else {
+                await signOut(auth);
+                alert('Acesso negado. Esta área é apenas para administradores.');
+            }
         } catch (err) {
-            alert('Erro ao entrar: ' + err.message);
+            console.error("Erro ao entrar:", err);
+            alert('Erro ao entrar: Verifique o seu e-mail e senha.');
         }
     });
 }
 
-// Botão de Logout no painel de administração
-const logoutBtn = document.getElementById('logout');
-if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-        signOut(auth).then(() => {
-            window.location.href = 'index.html';
+// --- LÓGICA DE PROTEÇÃO DE PÁGINA DE ADMIN ---
+export async function requireAdmin() {
+    return new Promise((resolve, reject) => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            unsubscribe();
+            if (user) {
+                const roleRef = doc(db, 'roles', user.uid);
+                const docSnap = await getDoc(roleRef);
+                if (docSnap.exists() && docSnap.data().admin) {
+                    resolve(user);
+                } else {
+                    window.location.href = 'login.html';
+                    reject(new Error('Acesso não autorizado'));
+                }
+            } else {
+                window.location.href = 'login.html';
+                reject(new Error('Utilizador não autenticado'));
+            }
         });
     });
 }
 
-// --- NOVO: Lógica de Redefinição de Senha ---
-const resetLink = document.getElementById('reset-password-link');
-if (resetLink) {
-    resetLink.addEventListener('click', (e) => {
+// --- LÓGICA DE LOGOUT ---
+const logoutButton = document.getElementById('logout');
+if (logoutButton) {
+    logoutButton.addEventListener('click', () => {
+        signOut(auth).then(() => {
+            window.location.href = 'login.html';
+        });
+    });
+}
+
+// --- LÓGICA PARA RECUPERAR SENHA ---
+const resetPasswordLink = document.getElementById('reset-password-link');
+if (resetPasswordLink) {
+    resetPasswordLink.addEventListener('click', (e) => {
         e.preventDefault();
-        const email = prompt("Por favor, insira o seu e-mail para redefinir a senha:");
-        
+        const email = prompt("Por favor, insira o seu e-mail para recuperar a senha:");
         if (email) {
             sendPasswordResetEmail(auth, email)
                 .then(() => {
-                    alert("E-mail de redefinição de senha enviado! Verifique a sua caixa de entrada.");
+                    showNotification('Link de recuperação enviado para o seu e-mail!', 'success');
                 })
                 .catch((error) => {
-                    console.error("Erro ao enviar e-mail de redefinição:", error);
-                    alert("Erro ao enviar e-mail: " + error.message);
+                    console.error("Erro ao enviar e-mail de recuperação:", error);
+                    showNotification('Erro ao enviar e-mail. Verifique se o e-mail está correto.', 'error');
                 });
         }
     });
 }
+
+
+// ==================================================================
+// ✅ CÓDIGO CORRIGIDO ABAIXO
+// ==================================================================
+
+// --- LÓGICA PARA ATUALIZAR A NAVEGAÇÃO DO UTILIZADOR (CABEÇALHO) ---
+async function updateUserNav(user) {
+    const adminLinkContainer = document.getElementById('admin-link-container');
+    const userNav = document.getElementById('user-navigation');
+
+    // Limpa a navegação para evitar duplicados
+    if (adminLinkContainer) adminLinkContainer.innerHTML = '';
+    if (userNav) userNav.innerHTML = '';
+
+    if (user) {
+        // Se o utilizador estiver autenticado
+        // 1. Verifica se é administrador (e AGUARDA a resposta)
+        const roleRef = doc(db, 'roles', user.uid);
+        const snap = await getDoc(roleRef); // Usa await para esperar a resposta
+        if (snap.exists() && snap.data().admin) {
+            if (adminLinkContainer) {
+                adminLinkContainer.innerHTML = `<a href="admin.html" class="cart-link admin-link">Painel Admin</a>`;
+            }
+        }
+
+        // 2. Mostra a navegação do cliente ("Minha Conta", "Sair")
+        if (userNav) {
+            userNav.innerHTML = `
+                <a href="minha-conta.html" class="cart-link">Minha Conta</a>
+                <button id="logout-cliente-auth" class="logout-btn">Sair</button>
+            `;
+            const logoutButton = document.getElementById('logout-cliente-auth');
+            if (logoutButton) {
+                logoutButton.addEventListener('click', () => {
+                    signOut(auth);
+                });
+            }
+        }
+    } else {
+        // Se o utilizador não estiver autenticado
+        if (userNav) {
+            userNav.innerHTML = `
+                <a href="login-cliente.html" class="cart-link">Entrar</a>
+                <a href="cadastro.html" class="cart-link">Registar</a>
+            `;
+        }
+    }
+}
+
+// Configura o "ouvinte" de autenticação que atualiza o cabeçalho sempre que o estado de login muda
+onAuthStateChanged(auth, (user) => {
+    updateUserNav(user);
+});
