@@ -27,6 +27,83 @@ if (loginClienteForm) {
     });
 }
 
+// --- LÓGICA PARA BUSCAR ENDEREÇO PELO CEP ---
+
+// Seleciona todos os campos do formulário de endereço
+const cepInput = document.querySelector('input[name="cep"]');
+const streetInput = document.querySelector('input[name="street"]');
+const neighborhoodInput = document.querySelector('input[name="neighborhood"]');
+const cityInput = document.querySelector('input[name="city"]');
+const stateInput = document.querySelector('input[name="state"]');
+const numberInput = document.querySelector('input[name="number"]');
+
+if (cepInput) {
+    cepInput.addEventListener('blur', async () => {
+        const cep = cepInput.value.replace(/\D/g, ''); // Remove caracteres não numéricos
+
+        if (cep.length !== 8) {
+            // Se o CEP não tiver 8 dígitos, não faz nada
+            return;
+        }
+
+        // Bloqueia os campos de endereço enquanto a busca é realizada
+        setAddressFieldsReadOnly(true, 'Buscando...');
+
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+            const data = await response.json();
+
+            if (data.erro) {
+                // Se o CEP for inválido
+                clearAddressFields();
+                alert('CEP não encontrado. Por favor, verifique o número digitado.');
+            } else {
+                // Preenche os campos com os dados retornados
+                streetInput.value = data.logradouro;
+                neighborhoodInput.value = data.bairro;
+                cityInput.value = data.localidade;
+                stateInput.value = data.uf;
+                numberInput.focus(); // Move o foco para o campo de número
+            }
+        } catch (error) {
+            console.error("Erro ao buscar CEP:", error);
+            alert('Não foi possível buscar o CEP. Tente novamente.');
+        } finally {
+            // Desbloqueia os campos após a busca
+            setAddressFieldsReadOnly(false);
+        }
+    });
+}
+
+/**
+ * Bloqueia ou desbloqueia os campos de endereço e define um placeholder.
+ * @param {boolean} isReadOnly - True para bloquear, false para desbloquear.
+ * @param {string} placeholderText - O texto a ser exibido nos campos bloqueados.
+ */
+function setAddressFieldsReadOnly(isReadOnly, placeholderText = '') {
+    streetInput.readOnly = isReadOnly;
+    neighborhoodInput.readOnly = isReadOnly;
+    cityInput.readOnly = isReadOnly;
+    stateInput.readOnly = isReadOnly;
+
+    if (isReadOnly) {
+        streetInput.value = placeholderText;
+        neighborhoodInput.value = placeholderText;
+        cityInput.value = placeholderText;
+        stateInput.value = placeholderText;
+    }
+}
+
+/**
+ * Limpa os campos de endereço.
+ */
+function clearAddressFields() {
+    streetInput.value = '';
+    neighborhoodInput.value = '';
+    cityInput.value = '';
+    stateInput.value = '';
+}
+
 // --- FUNÇÃO CORRIGIDA PARA ATUALIZAR A NAVEGAÇÃO (CABEÇALHO) ---
 // Esta função agora é 'async' e usa 'await' para garantir que a verificação de admin termine antes de continuar.
 async function updateUserNav(user) {
