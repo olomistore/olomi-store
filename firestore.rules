@@ -1,9 +1,35 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    
+    // ✅ CORREÇÃO: Permite que QUALQUER PESSOA leia a lista de produtos (get, list).
+    // Apenas administradores podem escrever (criar, editar, apagar).
+    match /products/{productId} {
+      allow get, list: if true;
+      allow write: if request.auth != null && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.admin == true;
+    }
+    
+    // Apenas clientes autenticados podem criar um pedido.
+    // Apenas o próprio cliente ou um admin podem ver um pedido específico.
+    // Apenas administradores podem ver a lista de todos os pedidos e atualizá-los.
+    match /orders/{orderId} {
+      allow create: if request.auth != null;
+      allow get: if request.auth != null && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.admin == true);
+      allow list, update: if request.auth != null && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.admin == true;
+      allow delete: if false;
+    }
+
+    // Um utilizador autenticado só pode ler a sua própria permissão.
+    match /roles/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false; // Ninguém pode alterar permissões diretamente.
+    }
+    
+    // Um utilizador pode criar uma conta e ler/atualizar os seus próprios dados.
+    match /users/{userId} {
+       allow read, update: if request.auth != null && request.auth.uid == userId;
+       allow create: if true;
     }
   }
 }
+
